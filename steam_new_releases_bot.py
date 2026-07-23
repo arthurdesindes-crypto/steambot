@@ -13,6 +13,7 @@ Ce script :
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -35,6 +36,18 @@ SEEN_FILE = Path(__file__).parent / "seen_releases.json"
 # Nombre max de nouveaux jeux à annoncer en une seule exécution
 # (évite de spammer le salon si le script n'a pas tourné depuis longtemps)
 MAX_POSTS_PER_RUN = 10
+
+# Seuls les jeux qui correspondent à au moins un de ces mots-clés seront postés.
+# Laisse la liste vide [] pour désactiver le filtre et tout poster.
+# Les mots-clés sont cherchés dans le genre, les catégories et la description du jeu.
+GENRE_KEYWORDS = [
+    "horror",       # Horreur
+    "co-op",        # Coop
+    "coop",
+    "adventure",    # Aventure
+    "strategy",     # Stratégie
+    "simulation",   # Simulation
+]
 
 # Pause entre deux appels à l'API Steam (pour rester correct avec leurs serveurs)
 SLEEP_BETWEEN_CALLS = 1.5
@@ -103,6 +116,57 @@ def fetch_app_details(app_id: int) -> dict | None:
     }
 
 
+# Mots-clés qui excluent un jeu s'ils apparaissent dans le genre, les catégories
+# ou la description (ex: contenu type anime/hentai que tu ne veux pas voir)
+EXCLUDE_KEYWORDS = [
+    "anime",
+    "hentai",
+    "ecchi",
+    "nudity",
+    "sexual content",
+]
+
+# Caractères autorisés dans le nom du jeu : lettres latines (avec accents FR),
+# chiffres, ponctuation courante. Si le nom contient d'autres caractères
+# (japonais, chinois, coréen, cyrillique...), le jeu est exclu.
+ALLOWED_NAME_PATTERN = re.compile(
+    r"^[a-zA-Z0-9À-ÖØ-öø-ÿ\s\-:!?'\",.&()/+™®©_%#*\[\]]*$"
+)
+
+
+def has_disallowed_characters(name: str) -> bool:
+    """True si le nom contient des caractères hors latin/français (ex: japonais, coréen...)."""
+    return not bool(ALLOWED_NAME_PATTERN.match(name))
+
+
+def matches_exclude_filter(details: dict) -> bool:
+    """True si le jeu doit être exclu (contenu anime/hentai, ou nom avec caractères non FR/EN)."""
+    if has_disallowed_characters(details.get("name", "")):
+        return True
+
+    haystack = " ".join(
+        details.get("genres", [])
+        + details.get("categories", [])
+        + [details.get("short_description", "")]
+    ).lower()
+
+    return any(keyword.lower() in haystack for keyword in EXCLUDE_KEYWORDS)
+
+
+def matches_genre_filter(details: dict) -> bool:
+    """Renvoie True si le jeu correspond à au moins un des GENRE_KEYWORDS."""
+    if not GENRE_KEYWORDS:
+        return True  # filtre désactivé, on garde tout
+
+    haystack = " ".join(
+        details.get("genres", [])
+        + details.get("categories", [])
+        + [details.get("short_description", "")]
+    ).lower()
+
+    return any(keyword.lower() in haystack for keyword in GENRE_KEYWORDS)
+
+
 def build_embed(app_id: int, details: dict) -> dict:
     tags = ", ".join(details["genres"][:4]) if details["genres"] else "Genre non précisé"
     extra_tags = [t for t in details["categories"] if "Coop" in t or "Multi" in t or "Solo" in t]
@@ -154,6 +218,18 @@ def main() -> None:
         if details is None:
             # On marque quand même comme vu pour ne pas boucler dessus indéfiniment
             seen_ids.add(app_id)
+            continue
+
+        if matches_exclude_filter(details):
+            # Contenu anime/hentai ou nom avec caractères non FR/EN : on ignore
+            seen_ids.add(app_id)
+            print(f"Ignoré (exclu) : {details['name']}")
+            continue
+
+        if not matches_genre_filter(details):
+            # Ne correspond à aucun genre voulu : on marque comme vu et on passe
+            seen_ids.add(app_id)
+            print(f"Ignoré (genre non voulu) : {details['name']}")
             continue
 
         embed = build_embed(app_id, details)

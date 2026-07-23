@@ -7,7 +7,6 @@ Ce script :
 2. Pour chaque jeu pas encore posté, récupère les détails (genre, prix, date de sortie).
 3. Poste un joli embed dans un salon Discord via un webhook.
 4. Mémorise les jeux déjà postés dans un fichier JSON pour ne jamais les reposter.
-5. Poste aussi quelques "pépites méconnues" (jeux existants, peu connus, très bien notés).
 
 À lancer périodiquement (ex: toutes les 30 min) via cron ou un timer systemd.
 """
@@ -34,7 +33,12 @@ SEEN_FILE = Path(__file__).parent / "seen_releases.json"
 MAX_POSTS_PER_RUN = 10
 
 GENRE_KEYWORDS = [
-    "horror", "co-op", "coop", "adventure", "strategy", "simulation",
+    "horror",
+    "co-op",
+    "coop",
+    "adventure",
+    "strategy",
+    "simulation",
 ]
 
 SLEEP_BETWEEN_CALLS = 1.5
@@ -42,7 +46,7 @@ SLEEP_BETWEEN_CALLS = 1.5
 HIDDEN_GEMS_ENABLED = True
 MAX_HIDDEN_GEMS_PER_RUN = 3
 HIDDEN_GEMS_MIN_POSITIVE_RATIO = 0.85
-HIDDEN_GEMS_MAX_OWNERS = 100_000
+HIDDEN_GEMS_MAX_OWNERS = 3_000_000
 HIDDEN_GEMS_MIN_REVIEWS = 50
 
 
@@ -69,7 +73,7 @@ def fetch_new_releases() -> list:
     return data.get("new_releases", {}).get("items", [])
 
 
-def fetch_app_details(app_id: int):
+def fetch_app_details(app_id: int) -> dict | None:
     url = "https://store.steampowered.com/api/appdetails"
     params = {"appids": app_id, "l": STEAM_LANG, "cc": STEAM_CC}
     resp = requests.get(url, params=params, timeout=15)
@@ -81,6 +85,7 @@ def fetch_app_details(app_id: int):
         return None
 
     d = entry["data"]
+
     app_type = d.get("type", "game")
 
     genres = [g["description"] for g in d.get("genres", [])]
@@ -110,8 +115,14 @@ def fetch_app_details(app_id: int):
 
 
 EXCLUDE_KEYWORDS = [
-    "anime", "hentai", "ecchi", "nudity", "sexual content",
-    "waifu", "harem", "visual novel",
+    "anime",
+    "hentai",
+    "ecchi",
+    "nudity",
+    "sexual content",
+    "waifu",
+    "harem",
+    "visual novel",
 ]
 
 ALLOWED_NAME_PATTERN = re.compile(

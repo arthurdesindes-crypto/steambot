@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 """
 Steam New Releases -> Discord Webhook
-
-Ce script :
-1. Interroge l'API publique de Steam pour récupérer les jeux "nouvelles sorties".
-2. Pour chaque jeu pas encore posté, récupère les détails (genre, prix, date de sortie).
-3. Poste un joli embed dans un salon Discord via un webhook.
-4. Mémorise les jeux déjà postés dans un fichier JSON pour ne jamais les reposter.
-
-À lancer périodiquement (ex: toutes les 30 min) via cron ou un timer systemd.
 """
 
 import json
@@ -19,10 +11,6 @@ from pathlib import Path
 
 import requests
 
-# ----------------------------------------------------------------------------
-# CONFIGURATION
-# ----------------------------------------------------------------------------
-
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "COLLE_TON_WEBHOOK_ICI")
 
 STEAM_LANG = "french"
@@ -30,7 +18,7 @@ STEAM_CC = "FR"
 
 SEEN_FILE = Path(__file__).parent / "seen_releases.json"
 
-MAX_POSTS_PER_RUN = 10
+MAX_POSTS_PER_RUN = 7
 
 GENRE_KEYWORDS = [
     "horror",
@@ -49,10 +37,6 @@ HIDDEN_GEMS_MIN_POSITIVE_RATIO = 0.85
 HIDDEN_GEMS_MAX_OWNERS = 3_000_000
 HIDDEN_GEMS_MIN_REVIEWS = 50
 
-
-# ----------------------------------------------------------------------------
-# LOGIQUE
-# ----------------------------------------------------------------------------
 
 def load_seen_ids() -> set:
     if SEEN_FILE.exists():
@@ -85,9 +69,7 @@ def fetch_app_details(app_id: int) -> dict | None:
         return None
 
     d = entry["data"]
-
     app_type = d.get("type", "game")
-
     genres = [g["description"] for g in d.get("genres", [])]
     categories = [c["description"] for c in d.get("categories", [])]
 
@@ -123,6 +105,11 @@ EXCLUDE_KEYWORDS = [
     "waifu",
     "harem",
     "visual novel",
+    "2d",
+    "pixel",
+    "pixel art",
+    "side-scroller",
+    "platformer",
 ]
 
 ALLOWED_NAME_PATTERN = re.compile(
@@ -137,26 +124,22 @@ def has_disallowed_characters(name: str) -> bool:
 def matches_exclude_filter(details: dict) -> bool:
     if has_disallowed_characters(details.get("name", "")):
         return True
-
     haystack = " ".join(
         details.get("genres", [])
         + details.get("categories", [])
         + [details.get("short_description", "")]
     ).lower()
-
     return any(keyword.lower() in haystack for keyword in EXCLUDE_KEYWORDS)
 
 
 def matches_genre_filter(details: dict) -> bool:
     if not GENRE_KEYWORDS:
         return True
-
     haystack = " ".join(
         details.get("genres", [])
         + details.get("categories", [])
         + [details.get("short_description", "")]
     ).lower()
-
     return any(keyword.lower() in haystack for keyword in GENRE_KEYWORDS)
 
 

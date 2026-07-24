@@ -2,7 +2,7 @@ name: Steam New Releases Bot
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+     - cron: '0 18 * * *'
   workflow_dispatch:
 
 jobs:
